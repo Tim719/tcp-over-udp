@@ -17,22 +17,20 @@ int tcp_over_udp_accept(int fd, int data_port, struct sockaddr_in *client)
   int n;
   socklen_t client_size = sizeof(struct sockaddr);
 
-  char* SYN_ACK = malloc(14);
-  sprintf(SYN_ACK, "SYN-ACK-%d", data_port);
+  char SYN_ACK[16];
+  sprintf(SYN_ACK, "SYN-ACK-%d\n", data_port);
 
   memset(buffer, 0, 32);
-  n = recvfrom(fd, &buffer, 32, 0, (struct sockaddr *) client, &client_size);
+  n = recvfrom(fd, &buffer, 32, 0, (struct sockaddr *)client, &client_size);
 
-  printf("Message received : %s\n", buffer);
-
-  if (strcmp(buffer, "SYN") != 0)
+  if (strcmp(buffer, "SYN\n") != 0)
   {
     perror("Connection must start with SYN\n");
     return -1;
   }
   printf("SYN received\n");
 
-  n = sendto(fd, SYN_ACK, strlen(SYN_ACK), 0, (struct sockaddr *) client, client_size);
+  n = sendto(fd, SYN_ACK, strlen(SYN_ACK), 0, (struct sockaddr *)client, client_size);
   if (n < 0)
   {
     perror("Unable to send SYN-ACK\n");
@@ -42,27 +40,32 @@ int tcp_over_udp_accept(int fd, int data_port, struct sockaddr_in *client)
 
   memset(buffer, 0, 32);
 
-  n = recvfrom(fd, &buffer, 32, 0, (struct sockaddr *) client, &client_size);
-  if (strcmp(buffer, "ACK") != 0)
+  n = recvfrom(fd, &buffer, 32, 0, (struct sockaddr *)client, &client_size);
+  if (strcmp(buffer, "ACK\n") != 0)
   {
     perror("ACK not received\n");
     return -1;
   }
   printf("ACK received. Connected\n");
 
-  return 0;
+  return data_port;
 }
 
 int main(int argc, char *argv[])
 {
   printf("Henlo\n");
-  struct sockaddr_in adresse, client;
+  struct sockaddr_in server_address, client;
+  socklen_t client_size = sizeof(struct sockaddr);
+  int optval = 1; // To set SO_REUSEADDR to 1
   int port = 0;
   int data_port = 0;
+  int recvsize = 0;
+  char buffer[RCVSIZE];
+  pid_t fork_pid = 0;
 
   if (argc != 3)
   {
-    printf("USAGE: server.c <control_port> <data_port>\n");
+    printf("USAGE: server <control_port> <data_port>\n");
     return 0;
   }
 
@@ -76,7 +79,6 @@ int main(int argc, char *argv[])
 
   //create socket
   int server_udp = socket(AF_INET, SOCK_DGRAM, 0);
-  int optval = 1;
   setsockopt(server_udp, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
 
   //handle error
@@ -88,24 +90,88 @@ int main(int argc, char *argv[])
 
   printf("Binding address...\n");
 
-  adresse.sin_family = AF_INET;
-  adresse.sin_port = htons(port);
-  adresse.sin_addr.s_addr = htonl(INADDR_ANY);
+  server_address.sin_family = AF_INET;
+  server_address.sin_port = htons(port);
+  server_address.sin_addr.s_addr = htonl(INADDR_ANY);
 
-  if (bind(server_udp, (struct sockaddr *)&adresse, sizeof(adresse)) == -1)
+  if (bind(server_udp, (struct sockaddr *)&server_address, sizeof(server_address)) == -1)
   {
     perror("UDP Bind failed\n");
     close(server_udp);
     return -1;
   }
 
-  printf("Connecting...\n");
+  while (1)
+  {
+    printf("Accepting connections...\n");
 
-  // Serveur UDP
-  int status = tcp_over_udp_accept(server_udp, data_port, &client);
+    // Serveur UDP
+    int portnumber = tcp_over_udp_accept(server_udp, data_port, &client);
 
-  if (status == 0) {
-    printf("Everything is fine my friend\n");
+    if (portnumber == 0)
+    {
+      printf("Everything is fine my friend\n");
+    }
+
+    data_port++;
+
+    // Forking to serve new clients
+
+    fork_pid = fork();
+
+    if (fork_pid < 0)
+    {
+      perror("Error forking process\n");
+      return -1;
+    }
+
+    if (fork_pid == 0)
+    {
+      // Child process here
+      close(server_udp);
+
+      server_address.sin_port = htons(portnumber);
+      server_udp = socket(AF_INET, SOCK_DGRAM, 0);
+      setsockopt(server_udp, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
+
+      if (bind(server_udp, (struct sockaddr *)&server_address, sizeof(server_address)) == -1)
+      {
+        perror("UDP Data connection bind failed\n");
+        close(server_udp);
+        return -1;
+      }
+
+      // Starting here: we are connected to a client
+      while (1)
+      {
+        memset(&buffer, 0, RCVSIZE);
+        printf("Waiting for new message\n");
+        recvsize = recvfrom(server_udp, &buffer, RCVSIZE, 0, (struct sockaddr *)&client, &client_size);
+
+        if (strcmp(buffer, "FIN\n") == 0)
+        {
+          printf("FIN received from client. Closing connection\n");
+          break;
+        }
+
+        printf("Client(%d)>%s\n", recvsize, buffer);
+        recvsize = sendto(server_udp, &buffer, strlen(buffer), 0, (struct sockaddr *)&client, client_size);
+
+        if (recvsize < 0)
+        {
+          perror("Error sending message\n");
+          return -1;
+        }
+
+        printf("Message sent %d\n", recvsize);
+      }
+      close(server_udp);
+      exit(0);
+    }
+    else
+    {
+      printf("Child process started at PID %d\n", fork_pid);
+    }
   }
 
   /*
