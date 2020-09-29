@@ -7,10 +7,14 @@ OBJ= $(SRC:.c=.o)
 
 all: $(EXEC)
 
+server: server.o funcs.o
+
+client: client.o funcs.o
+
 %: %.o
 	gcc  $^ -o $@
 
-%.o: %.c
+%.o: %.c %.h
 	gcc $(CFLAGS) -c $< -o $@
 
 clean: 

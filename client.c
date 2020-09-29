@@ -7,55 +7,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define RCVSIZE 1024
-
-int tcp_over_udp_connect(int fd, struct sockaddr_in *server)
-{
-  char msg[32];
-  int n;
-  socklen_t server_len = sizeof(struct sockaddr);
-  printf("Sending SYN\n");
-
-  n = sendto(fd, "SYN\n", 4, 0, (struct sockaddr *) server, server_len);
-  if (n < 0)
-  {
-    perror("Error sending SYN packet\n");
-    return -1;
-  }
-
-  printf("SYN sent\n");
-
-  memset(msg, 0, 32);
-  n = recvfrom(fd, &msg, 32, 0, (struct sockaddr *) server, &server_len);
-
-  if (n < 0) {
-    perror("Error receiving SYN-ACK\n");
-    return -1;
-  }
-
-  if (strncmp(msg, "SYN-ACK", 7) != 0)
-  {
-    perror("SYN-ACK not received\n");
-    return -1;
-  }
-
-  printf("SYN-ACK received\n");
-
-  char *data_port = malloc(6);
-
-  strncpy(data_port, msg + 8, 6);
-
-  printf("Sending ACK\n");
-  n = sendto(fd, "ACK\n", 4, 0, (struct sockaddr *) server, server_len);
-  if (n < 0)
-  {
-    perror("Error sending ACK packet\n");
-    return -1;
-  }
-
-  printf("ACK sent\n");
-  return atoi(data_port);
-}
+#include "funcs.h"
 
 int main(int argc, char *argv[])
 {
@@ -64,9 +16,10 @@ int main(int argc, char *argv[])
   int port = 1234;
   int valid = 1;
   int recvsize = 0;
-  char msg[RCVSIZE];
-  char blanmsg[RCVSIZE];
+  char msg[MAX_DGRAM_SIZE];
+  char blanmsg[MAX_DGRAM_SIZE];
   char* server_ip;
+  int sequence_number = 0;
 
   if (argc != 3)
   {
@@ -111,7 +64,7 @@ int main(int argc, char *argv[])
     return -1;
   }
 
-  printf("Data port: %d\n", data_port);
+  printf("Data port: %d\n", MAX_DGRAM_SIZE);
 
   if (data_port < 1) {
     perror("Error receiving data port\n");
@@ -123,8 +76,8 @@ int main(int argc, char *argv[])
   socklen_t address_len = sizeof(struct sockaddr);
 
   while (1) {
-    memset(&msg, 0, RCVSIZE);
-    memset(&blanmsg, 0, RCVSIZE);
+    memset(&msg, 0, MAX_DGRAM_SIZE);
+    memset(&blanmsg, 0, MAX_DGRAM_SIZE);
     printf("> ");
     fgets(msg,255,stdin);
 
@@ -133,7 +86,8 @@ int main(int argc, char *argv[])
       break;
     }
 
-    recvsize = sendto(server_desc, &msg, strlen(msg), 0, (struct sockaddr *) &address, address_len);
+    recvsize = safe_send(server_desc, msg, &address, sequence_number);
+
     if (recvsize < 0)
     {
          perror("ERROR writing to socket");
@@ -141,7 +95,7 @@ int main(int argc, char *argv[])
 
     fflush(stdin);
 
-    recvsize = recvfrom(server_desc, &blanmsg, RCVSIZE, 0, (struct sockaddr *) &address, &address_len);
+    recvsize = safe_recv(server_desc, blanmsg, &address, sequence_number);
     printf("server(%d)> %s\n", recvsize, blanmsg);
   }
 
