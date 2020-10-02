@@ -14,14 +14,13 @@ int main(int argc, char *argv[])
 {
   printf("Henlo\n");
   struct sockaddr_in server_address, client;
-  socklen_t client_size = sizeof(struct sockaddr);
   int optval = 1; // To set SO_REUSEADDR to 1
   int port = 0;
   int data_port = 0;
   int recvsize = 0;
   char buffer[MAX_DGRAM_SIZE];
   pid_t fork_pid = 0;
-  int sequence_number = 0;
+  int sequence_number = 1; // We're waiting for the 1st byte
 
   if (argc != 3)
   {
@@ -100,6 +99,7 @@ int main(int argc, char *argv[])
         close(server_udp);
         return -1;
       }
+      printf("New socket created on port %d\n", portnumber);
 
       // Starting here: we are connected to a client
       while (1)
@@ -114,16 +114,13 @@ int main(int argc, char *argv[])
           break;
         }
 
-        printf("Client(%d)>%s\n", recvsize, buffer);
-        recvsize = safe_send(server_udp, buffer, &client, sequence_number);
-
-        if (recvsize < 0)
-        {
-          perror("Error sending message\n");
-          return -1;
+        if (recvsize < 0) {
+          perror("Unable to receive message from client\n");
         }
 
-        printf("Message sent %d\n", recvsize);
+        sequence_number += recvsize;
+
+        printf("Client(%d)>%s\n", recvsize, buffer);
       }
       close(server_udp);
       exit(0);

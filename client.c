@@ -15,11 +15,11 @@ int main(int argc, char *argv[])
   struct sockaddr_in address;
   int port = 1234;
   int valid = 1;
-  int recvsize = 0;
+  int sentsize = 0;
   char msg[MAX_DGRAM_SIZE];
   char blanmsg[MAX_DGRAM_SIZE];
   char* server_ip;
-  int sequence_number = 0;
+  int bytes_sent = 0;
 
   if (argc != 3)
   {
@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     return -1;
   }
 
-  printf("Data port: %d\n", MAX_DGRAM_SIZE);
+  printf("Data port: %d\n", data_port);
 
   if (data_port < 1) {
     perror("Error receiving data port\n");
@@ -82,21 +82,20 @@ int main(int argc, char *argv[])
     fgets(msg,255,stdin);
 
     if (strcmp(msg, "stop\n") == 0) {
-      recvsize = sendto(server_desc, "FIN\n", 4, 0, (struct sockaddr *) &address, address_len);
+      sentsize = sendto(server_desc, "FIN\n", 4, 0, (struct sockaddr *) &address, address_len);
       break;
     }
 
-    recvsize = safe_send(server_desc, msg, &address, sequence_number);
+    sentsize = safe_send(server_desc, msg, &address, bytes_sent);
 
-    if (recvsize < 0)
+    if (sentsize < 0)
     {
-         perror("ERROR writing to socket");
+         perror("An error has happened while writing to socket\n");
     }
 
-    fflush(stdin);
+    bytes_sent += sentsize;
 
-    recvsize = safe_recv(server_desc, blanmsg, &address, sequence_number);
-    printf("server(%d)> %s\n", recvsize, blanmsg);
+    fflush(stdin);
   }
 
   close(server_desc);
