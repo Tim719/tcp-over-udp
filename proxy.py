@@ -141,11 +141,11 @@ def main():
     """Main method."""
     parser = argparse.ArgumentParser(description='UPD proxy.')
     
-    parser.add_argument('-s', '--src', required=True, help='Source IP and port, i.e.: 127.0.0.1:8000')
-    parser.add_argument('-d', '--dst', required=True, help='Destination IP and port, i.e.: 127.0.0.1:8888')
-    parser.add_argument('-p', '--port', required=True, help='Data port')
-    parser.add_argument('-L', '--loss-percentage', required=False, type=float, help='Loss percentage', default=0.0)
-    parser.add_argument('-D', '--delay', required=False, type=float, default=0.0, help='Delay (as exponential law\'s parameter)')
+    parser.add_argument('-s', '--src', required=True, help='Source IP and port, i.e.: 127.0.0.1:8000. This should be the ip:port exposed to the client.')
+    parser.add_argument('-d', '--dst', required=True, help='Destination IP and port, i.e.: 127.0.0.1:8888. This should be the ip:port to connect to the server.')
+    parser.add_argument('-p', '--port', required=True, help='Port that will be provided to the client for data connection.')
+    parser.add_argument('-L', '--loss-percentage', required=False, type=float, help='Loss percentage, i.e : 0.5 if you want a 50%% packet loss.', default=0.0)
+    parser.add_argument('-D', '--delay', required=False, type=float, default=0.0, help='Delay (as exponential law parameter), i.e : 0.5 if you want an average delay of 0.5s')
     
     args = parser.parse_args()
     
