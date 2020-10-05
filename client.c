@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/select.h>
 
 #include "funcs.h"
 
@@ -20,6 +21,9 @@ int main(int argc, char *argv[])
   char blanmsg[MAX_DGRAM_SIZE];
   char* server_ip;
   int bytes_sent = 0;
+
+  fd_set readfs;
+  FD_ZERO(&readfs);
 
   if (argc != 3)
   {
@@ -86,7 +90,7 @@ int main(int argc, char *argv[])
       break;
     }
 
-    sentsize = safe_send(server_desc, msg, &address, bytes_sent);
+    sentsize = safe_send(server_desc, msg, &address, bytes_sent, &readfs, 10);
 
     if (sentsize < 0)
     {
