@@ -15,7 +15,9 @@ import logging
 import select
 import socket
 import threading
-import random
+from random import random as rnd
+from numpy import random
+from time import sleep
 
 FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
 logging.basicConfig(format=FORMAT)
@@ -25,6 +27,7 @@ g_src = ""
 g_dst = ""
 data_port = 0
 loss_percentage = 0.0
+mock_delay = 0.0
 stop_thread = False
 
 data_thread = None
@@ -75,7 +78,7 @@ def udp_proxy(src, dst, loss_percentage=0.0):
     dst -- Destination IP address and port. I.e.: '127.0.0.1:8888'
     """
 
-    global stop_thread
+    global stop_thread, mock_delay
 
     LOGGER.debug('Starting UDP proxy...')
     LOGGER.debug('Src: {}'.format(src))
@@ -83,6 +86,9 @@ def udp_proxy(src, dst, loss_percentage=0.0):
 
     if loss_percentage > 0:
         LOGGER.info("Starting proxy with loss percentage set to %.2f" % loss_percentage)
+    
+    if mock_delay > 0:
+        LOGGER.info("Mean mock delay set to %.2f" % mock_delay)
     
     proxy_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     proxy_socket.bind(ip_to_tuple(src))
@@ -94,13 +100,18 @@ def udp_proxy(src, dst, loss_percentage=0.0):
 
     while not stop_thread:
         data, address = proxy_socket.recvfrom(BUFFER_SIZE)
+
+        if mock_delay > 0:
+            delay = random.exponential(scale=mock_delay)
+            LOGGER.debug("Sleeping for %.4fs" % delay)
+            sleep(delay)
         
         if client_address == None:
             client_address = address
 
         if address == client_address:
             data = LOCAL_DATA_HANDLER(data, address)
-            if loss_percentage <= random.random():
+            if loss_percentage <= rnd():
                 proxy_socket.sendto(data, server_address)
             else:
                 LOGGER.info("----- Discarding packet -----")
@@ -126,14 +137,15 @@ def ip_to_tuple(ip):
 
 
 def main():
-    global g_src, g_dst, data_port, data_thread, loss_percentage
+    global g_src, g_dst, data_port, data_thread, loss_percentage, mock_delay
     """Main method."""
     parser = argparse.ArgumentParser(description='UPD proxy.')
     
     parser.add_argument('-s', '--src', required=True, help='Source IP and port, i.e.: 127.0.0.1:8000')
     parser.add_argument('-d', '--dst', required=True, help='Destination IP and port, i.e.: 127.0.0.1:8888')
     parser.add_argument('-p', '--port', required=True, help='Data port')
-    parser.add_argument('-l', '--loss-percentage', required=False, type=float, help='Loss percentage', default=0.0)
+    parser.add_argument('-L', '--loss-percentage', required=False, type=float, help='Loss percentage', default=0.0)
+    parser.add_argument('-D', '--delay', required=False, type=float, default=0.0, help='Delay (as exponential law\'s parameter)')
     
     args = parser.parse_args()
     
@@ -143,6 +155,7 @@ def main():
     g_dst = args.dst
     data_port = args.port
     loss_percentage = args.loss_percentage
+    mock_delay = args.delay
     
     udp_proxy(g_src, g_dst, loss_percentage=0.0)
 
