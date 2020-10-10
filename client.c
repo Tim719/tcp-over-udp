@@ -19,8 +19,9 @@ int main(int argc, char *argv[])
   int sentsize = 0;
   char msg[MAX_DGRAM_SIZE];
   char blanmsg[MAX_DGRAM_SIZE];
-  char* server_ip;
+  char *server_ip;
   int bytes_sent = 0;
+  char frame[MAX_DGRAM_SIZE];
 
   fd_set readfs;
   FD_ZERO(&readfs);
@@ -56,21 +57,24 @@ int main(int argc, char *argv[])
 
   printf("IP: %s\n", server_ip);
 
-  if (inet_aton(server_ip, &address.sin_addr) < 0) {
+  if (inet_aton(server_ip, &address.sin_addr) < 0)
+  {
     perror("Error binding address\n");
     return -1;
   }
 
   int data_port = tcp_over_udp_connect(server_desc, &address);
 
-  if (data_port < 0) {
+  if (data_port < 0)
+  {
     printf("Error opening connection\n");
     return -1;
   }
 
   printf("Data port: %d\n", data_port);
 
-  if (data_port < 1) {
+  if (data_port < 1)
+  {
     perror("Error receiving data port\n");
     return -1;
   }
@@ -78,23 +82,37 @@ int main(int argc, char *argv[])
   address.sin_port = htons(data_port);
 
   socklen_t address_len = sizeof(struct sockaddr);
+  int sequence_number = 1;
 
-  while (1) {
+  while (1)
+  {
     memset(&msg, 0, MAX_DGRAM_SIZE);
     memset(&blanmsg, 0, MAX_DGRAM_SIZE);
     printf("> ");
-    fgets(msg,255,stdin);
+    fgets(msg, 255, stdin);
 
-    if (strcmp(msg, "stop\n") == 0) {
-      sentsize = sendto(server_desc, "FIN\n", 4, 0, (struct sockaddr *) &address, address_len);
+    if (strcmp(msg, "stop\n") == 0)
+    {
+      sentsize = sendto(server_desc, "FIN\n", 4, 0, (struct sockaddr *)&address, address_len);
       break;
     }
 
-    sentsize = safe_send(server_desc, msg, &address, bytes_sent, &readfs, 10);
+    memset(&frame, 0, MAX_DGRAM_SIZE);
+
+    sentsize = forge_frame(frame, msg, sequence_number);
+    sequence_number++;
+    printf("Frame sent:\n");
+    for (int i = 0; i < sentsize; i++)
+    {
+      printf("%hhX", frame[i]);
+    }
+    printf("\n");
+
+    sentsize = sendto(server_desc, frame, sentsize, 0, (struct sockaddr *)&address, address_len);
 
     if (sentsize < 0)
     {
-         perror("An error has happened while writing to socket\n");
+      perror("An error has happened while writing to socket\n");
     }
 
     bytes_sent += sentsize;

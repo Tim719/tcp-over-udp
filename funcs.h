@@ -19,6 +19,8 @@ int tcp_over_udp_connect(int fd, struct sockaddr_in *server);
 
 int tcp_over_udp_accept(int fd, int data_port, struct sockaddr_in *client);
 
+int forge_frame(char *frame, char *data, int sequence_number);
+
 int safe_send(int fd, char* buffer, struct sockaddr_in *client, int seq_number, fd_set *readfs, int max_retries);
 
 int safe_recv(int fd, char* buffer, struct sockaddr_in *client, int seq_number);

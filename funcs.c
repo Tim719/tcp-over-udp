@@ -96,6 +96,19 @@ int tcp_over_udp_accept(int fd, int data_port, struct sockaddr_in *client)
   return data_port;
 }
 
+int forge_frame(char *frame, char *data, int sequence_number) {
+  int data_size = strlen(data);
+  uint32_t net_sequence_number = htonl(sequence_number);
+  uint32_t net_data_size = htonl(data_size);
+  
+  memcpy(frame, &net_sequence_number, 4);
+  memcpy(frame + 4, &net_data_size, 4);
+  memcpy(frame + 8, data, data_size);
+  
+
+  return data_size + 8;
+}
+
 int safe_send(int fd, char *buffer, struct sockaddr_in *client, int seq_number, fd_set *readfs, int max_retries)
 {
   socklen_t client_size = sizeof(struct sockaddr);
@@ -202,7 +215,21 @@ int safe_recv(int fd, char *buffer, struct sockaddr_in *client, int seq_number)
     perror("Error receiving message\n");
     return -1;
   }
-  printf("(safe_recv) Message received (%ld): %s\n", strlen(buffer), buffer);
+
+  uint32_t net_seq_number;
+  memcpy(&net_seq_number, buffer, 4);
+
+  uint32_t net_recv_size;
+  memcpy(&net_recv_size, buffer + 4, 4);
+
+  char rbuf[MAX_DGRAM_SIZE];
+  memset(&rbuf, 0, MAX_DGRAM_SIZE);
+
+  memcpy(rbuf, buffer + 8, net_recv_size);
+
+
+  printf("(safe_recv) Message received\n");
+  printf("Sequence number: %d\nLength: %d\nMessage: %s", net_seq_number, net_recv_size, rbuf);
 
   char ack[12];
   memset(ack, 0, 12);
