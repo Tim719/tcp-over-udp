@@ -1,7 +1,13 @@
 from socket import htons, ntohs, socket, AF_INET, SOCK_DGRAM, IPPROTO_UDP
 from typing import Tuple
+import logging
 
 BUFFER_SIZE = 2 ** 10
+RECV_BUFFER_SIZE = BUFFER_SIZE + 8
+FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
+logging.basicConfig(format=FORMAT)
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.DEBUG)
 
 def checksum(data: bytes) -> int:
     chk: int = 0
@@ -37,6 +43,7 @@ def decode_frame(frame: bytes, seq_number: int) -> Tuple[bool, bool, int, bytes]
     return chksum_is_correct, sequence_number_is_correct, received_seq_number, data 
 
 def create_ack(seq_number: int) -> bytes:
+    LOGGER.debug(f"Creating ACK ({seq_number})")
     net_seq_number: int = htons(seq_number)
 
     frame: bytes = "AACK".encode('ascii')
@@ -45,6 +52,7 @@ def create_ack(seq_number: int) -> bytes:
     return frame
 
 def create_nack(seq_number: int) -> bytes:
+    LOGGER.debug(f"Creating NACK ({seq_number})")
     net_seq_number: int = htons(seq_number)
 
     frame: bytes = "NACK".encode('ascii')
@@ -59,6 +67,8 @@ def parse_ack(ack_data: bytes, sequence_number: int) -> Tuple[bool, bool, int]:
     ack_received: bool = (status == "AACK")
 
     sequence_number_is_correct: bool = (seq_number == sequence_number)
+
+    LOGGER.debug(f"Parsing ACK: {ack_received} (is_ack), {sequence_number_is_correct} (correct seq. number), {sequence_number} (seq.number)")
 
     return ack_received, sequence_number_is_correct, seq_number
 
@@ -79,7 +89,7 @@ def connect(server_socket: socket, server_ip: str, port: int) -> Tuple[str, int]
 
     server_socket.sendto("SYN".encode('ascii'), server_address)
 
-    print("SYN sent")
+    LOGGER.debug("SYN sent")
 
     raw_data, net_server_address = server_socket.recvfrom(BUFFER_SIZE)
     data: str = raw_data.decode('ascii')
@@ -87,7 +97,7 @@ def connect(server_socket: socket, server_ip: str, port: int) -> Tuple[str, int]
     if data[:8] != "SYN-ACK-":
         raise ConnectionError("Error receiving SYN-ACK")
 
-    print("SYN-ACK received: %s" % data)
+    LOGGER.debug("SYN-ACK received: %s" % data)
 
     try:
         data_port = int(data[8:])
@@ -96,7 +106,7 @@ def connect(server_socket: socket, server_ip: str, port: int) -> Tuple[str, int]
 
     server_socket.sendto("ACK".encode('ascii'), server_address)
 
-    print("ACK sent")
+    LOGGER.debug("ACK sent")
     
     return (server_ip, data_port)
 
@@ -107,10 +117,10 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
     raw_data, client_address = server_socket.recvfrom(BUFFER_SIZE)
 
     if raw_data.decode('ascii') != "SYN":
-        print("First frame must be a SYN")
+        LOGGER.debug("First frame must be a SYN")
         return
 
-    print("SYN received")
+    LOGGER.debug("SYN received")
 
     syn_ack: bytes = f"SYN-ACK-{data_port}".encode('ascii')
 
@@ -118,7 +128,7 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
     if nbytes != len(syn_ack):
         raise ConnectionError("Error sending SYN-ACK")
 
-    print("Opening a data connection on port %d" % data_port)
+    LOGGER.debug("Opening a data connection on port %d" % data_port)
 
     raw_data, client_address2 = server_socket.recvfrom(BUFFER_SIZE)
 
@@ -128,7 +138,7 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
     if client_address2 != client_address:
         raise ConnectionError("ACK received from another client")
 
-    print("ACK received")
+    LOGGER.debug("ACK received")
     
     data_sock: socket = socket(family=AF_INET, type=SOCK_DGRAM, proto=IPPROTO_UDP)
 
