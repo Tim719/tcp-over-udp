@@ -60,10 +60,13 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Receiver a file using a connected transport protocol over UDP")
     parser.add_argument('-i', '--interface', required=False, help="Listening interface", default="0.0.0.0")
-    parser.add_argument('-p', '--port', required=False, help="Port used for control connection", type=int, default=1234)
+    parser.add_argument('port', nargs="?", help="Port used for control connection", type=int, default=1234)
     parser.add_argument('-d', '--data', required=False, help="Port used for data connection (will be incremented for each new client)", type=int, default=5500)
+    parser.add_argument('-v', '--verbose', required=False, help="Give more infos by increasing verbosity", type=bool, default=False, const=True, nargs='?')
 
     args = parser.parse_args()
+
+    LOGGER.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
     LOGGER.info("Server started on %s:%d (data port: %d)" % (args.interface, args.port, args.data))
 
