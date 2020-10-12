@@ -33,6 +33,7 @@ if __name__ == "__main__":
     with open(args.file, 'rb') as fd:
         while True:
             raw_data = fd.read(BUFFER_SIZE)
+            sequence_number %= MAX_SEQ_NUMBER
 
             if not raw_data:
                 LOGGER.info("End of File")
@@ -50,9 +51,9 @@ if __name__ == "__main__":
 
             if not ack_status:
                 going_back: int = sequence_number - net_seq_number
-                fd.seek(-going_back)
-                sequence_number -= going_back
                 LOGGER.debug(f"Going back {going_back} bytes in file.")
+                fd.seek(-going_back, os.SEEK_CUR)
+                sequence_number -= going_back
     
     server_sock.sendto(get_end_frame(), server_address)
     

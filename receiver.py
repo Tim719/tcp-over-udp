@@ -21,6 +21,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
 
     with open(filepath, mode='wb') as fd:
         while True:
+            seq_number %= MAX_SEQ_NUMBER
             LOGGER.debug("Next byte expected: %d" % seq_number)
             raw_data, client_addr = server_sock.recvfrom(RECV_BUFFER_SIZE)
 

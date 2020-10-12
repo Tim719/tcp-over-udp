@@ -2,8 +2,9 @@ from socket import htons, ntohs, socket, AF_INET, SOCK_DGRAM, IPPROTO_UDP
 from typing import Tuple
 import logging
 
-BUFFER_SIZE = 2 ** 8
+BUFFER_SIZE = 2 ** 10
 RECV_BUFFER_SIZE = BUFFER_SIZE + 8
+MAX_SEQ_NUMBER = 2 ** 16
 FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
 logging.basicConfig(format=FORMAT)
 LOGGER = logging.getLogger()
@@ -19,7 +20,7 @@ def checksum(data: bytes) -> int:
 def create_frame(data: bytes, seq_number: int) -> Tuple[int, bytes]:
     data_size: int = len(data)
     net_data_length: int = htons(data_size)
-    net_seq_number: int = htons(seq_number + data_size)
+    net_seq_number: int = htons((seq_number + data_size) % MAX_SEQ_NUMBER)
 
     chksum: int = checksum(data)
 
