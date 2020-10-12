@@ -1,51 +1,61 @@
+#!/usr/bin/env python3
+
 import os
 import argparse
 import socket
 from helpers import *
-from typing import Tuple
+from typing import Tuple, List
 from threading import Thread
 from datetime import datetime
 
-DST_FOLDER = "data/"
-
 def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     raw_data: bytes = b''
-    chksum_succes: bool = False
-    sequence_number_success: bool = False
-    received_data: bytes = b''
-    received_seq_number: int = 0
+    filename: str = ""
     seq_number: int = 1
 
-    filename: str = datetime.now().strftime('%b-%d-%I%M%p-%G.data')
-    filepath: str = os.path.join(DST_FOLDER, filename)
+    array_pointer: int = 0
 
-    with open(filepath, mode='wb') as fd:
+    sent_sequence_numbers: List[int] = []
+    data: List[bytes] = []
+
+    raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
+    filename = raw_data.decode('utf-8').strip('\0')
+    LOGGER.info("Client (%s:%d) is asking for file %s" % (client_address[0], client_address[1], filename))
+
+    if not os.path.isfile(filename):
+        LOGGER.warning("%s file does not exist." % filename)
+        raw_data = b"FIN"
+        server_sock.sendto(raw_data, client_address)
+        return
+
+    with open(filename, 'rb') as fd:
         while True:
-            seq_number %= MAX_SEQ_NUMBER
-            LOGGER.debug("Next byte expected: %d" % seq_number)
-            raw_data, client_addr = server_sock.recvfrom(RECV_BUFFER_SIZE)
+            raw_data = fd.read(BUFFER_SIZE - 7)
 
-            if client_addr != client_address:
-                LOGGER.debug("Data received from wrong client")
+            if not raw_data:
                 break
 
-            if is_end_frame(raw_data):
-                LOGGER.debug("Terminating connection from client")
-                break
+            formatted_seq_number = "%06d" % seq_number
+            LOGGER.debug("Sending sequence #%s" % formatted_seq_number)
+            raw_data = formatted_seq_number.encode('ascii') + raw_data
 
-            chksum_succes, sequence_number_success, received_seq_number, received_data = decode_frame(raw_data, seq_number)
-            LOGGER.debug(f"State: {chksum_succes} (chksum) - {sequence_number_success} (seq. number), Seq: {received_seq_number}")
-            # LOGGER.info(f"Data:{received_data.decode('utf-8')}")
+            LOGGER.debug(raw_data.decode('utf-8'))
 
-            fd.write(received_data)
-
-            if chksum_succes and sequence_number_success:
-                raw_data = create_ack(received_seq_number)
-                seq_number = received_seq_number
-            else:
-                raw_data = create_nack(seq_number)    
+            seq_number += 1
 
             server_sock.sendto(raw_data, client_address)
+
+            LOGGER.debug("Waiting for ACK")
+
+            raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
+            LOGGER.info('Client> %s' % raw_data.decode('ascii'))
+    
+    LOGGER.info("End of file")
+
+    raw_data = b"FIN"
+    server_sock.sendto(raw_data, client_address)
+
+            
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Receiver a file using a connected transport protocol over UDP")
@@ -55,10 +65,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if not os.path.exists(DST_FOLDER):
-        os.makedirs(DST_FOLDER)
-
-    LOGGER.info("Receiver started on %s:%d (data port: %d)" % (args.interface, args.port, args.data))
+    LOGGER.info("Server started on %s:%d (data port: %d)" % (args.interface, args.port, args.data))
 
     server_sock: socket = socket(family=AF_INET, type=SOCK_DGRAM, proto=IPPROTO_UDP)
     server_address = (args.interface, args.port)
