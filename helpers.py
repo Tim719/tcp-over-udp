@@ -2,7 +2,7 @@ from socket import htons, ntohs, socket, AF_INET, SOCK_DGRAM, IPPROTO_UDP
 from typing import Tuple
 import logging
 
-BUFFER_SIZE = 2 ** 10
+BUFFER_SIZE = 2 ** 8
 RECV_BUFFER_SIZE = BUFFER_SIZE + 8
 FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
 logging.basicConfig(format=FORMAT)

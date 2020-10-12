@@ -47,6 +47,12 @@ if __name__ == "__main__":
 
             raw_data, _ = server_sock.recvfrom(BUFFER_SIZE)
             ack_status, sequence_number_is_correct, net_seq_number = parse_ack(raw_data, sequence_number)
+
+            if not ack_status:
+                going_back: int = sequence_number - net_seq_number
+                fd.seek(-going_back)
+                sequence_number -= going_back
+                LOGGER.debug(f"Going back {going_back} bytes in file.")
     
     server_sock.sendto(get_end_frame(), server_address)
     
