@@ -5,7 +5,9 @@ import logging
 BUFFER_SIZE = 2 ** 10
 MAX_SEQ_NUMBER = 999999
 FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
-WINDOW_SIZE = 16
+
+ACK_TIMEOUT: float = 0.250
+MAX_RETRIES: int = 10
 
 logging.basicConfig(format=FORMAT)
 LOGGER = logging.getLogger()
