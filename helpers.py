@@ -46,5 +46,6 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
     address = (server_ip, data_port)
 
     data_sock.bind(address)
+    data_sock.setblocking(False)
 
     return data_sock, client_address

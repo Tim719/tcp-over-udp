@@ -3,20 +3,22 @@
 import os
 import argparse
 import socket
+import select
 from helpers import *
 from typing import Tuple, List
-from threading import Thread
+from threading import Thread, Lock
 from datetime import datetime
+import collections
+
 
 def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     raw_data: bytes = b''
     filename: str = ""
     seq_number: int = 1
 
-    array_pointer: int = 0
+    end_of_file: bool = False
 
-    sent_sequence_numbers: List[int] = []
-    data: List[bytes] = []
+    sent_seq = collections.deque(maxlen=WINDOW_SIZE)
 
     raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
     filename = raw_data.decode('utf-8').strip('\0')
@@ -35,25 +37,43 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
             if not raw_data:
                 break
 
-            formatted_seq_number = "%06d" % seq_number
-            LOGGER.debug("Sending sequence #%s" % formatted_seq_number)
-            raw_data = formatted_seq_number.encode('ascii') + raw_data
+            ready = select.select([server_sock], [], [], 0.0)
+            if ready[0]:
+                raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
 
-            LOGGER.debug(raw_data.decode('utf-8'))
+                try:
+                    received_ack_number = int(raw_data.decode('ascii').strip('\0')[3:])
+                except ValueError:
+                    LOGGER.critical("Malformated ACK number")
+                    raise
 
-            seq_number += 1
+                oldest_seq_number, sent_data = sent_seq[0]
 
-            server_sock.sendto(raw_data, client_address)
+                if received_ack_number < oldest_seq_number:
+                    raise ValueError("Impossible d'acquitter un segment déjà acquitté")
+                
+                while True:
+                    sent_seq_number, sent_data = sent_seq.popleft() 
+                    # Normalement on ne devrait pas être dans le cas où on pop un tableau vide
 
-            LOGGER.debug("Waiting for ACK")
+                    if received_ack_number <= sent_seq_number:
+                        break
 
-            raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
-            LOGGER.info('Client> %s' % raw_data.decode('ascii'))
+            if len(sent_seq) < WINDOW_SIZE:
+                sent_seq.append((seq_number, raw_data)) # On  ajoute le paquet au tableau
+
+                formatted_seq_number = "%06d" % seq_number
+                LOGGER.debug("Sending sequence #%s" % formatted_seq_number)
+                raw_data = formatted_seq_number.encode('ascii') + raw_data
+
+                server_sock.sendto(raw_data, client_address)
+                seq_number += 1
     
     LOGGER.info("End of file")
 
     raw_data = b"FIN"
     server_sock.sendto(raw_data, client_address)
+    server_sock.close()
 
             
 
