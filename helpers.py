@@ -1,17 +1,31 @@
 from socket import htons, ntohs, socket, AF_INET, SOCK_DGRAM, IPPROTO_UDP
-from typing import Tuple
+from typing import Tuple, List
 import logging
 
 BUFFER_SIZE = 2 ** 10
 MAX_SEQ_NUMBER = 999999
 FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
 
-ACK_TIMEOUT: float = 0.250
-MAX_RETRIES: int = 10
+AVG_RTT: float = 0.010
+MAX_RETRIES: int = 32
 
 logging.basicConfig(format=FORMAT)
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.DEBUG)
+
+ESTIMATE_RTT: float = 1
+CONVERGENCE_FACTOR: float = 0.8
+RTT: List[float] = [ESTIMATE_RTT]
+
+SRTT_MARGIN: float = 1.5
+
+def srtt(seq_number):
+    global ESTIMATE_RTT
+
+    if seq_number == 0:
+        return ESTIMATE_RTT
+    else:
+        return CONVERGENCE_FACTOR * srtt(seq_number - 1) + (1 - CONVERGENCE_FACTOR) * RTT[seq_number - 1]
 
 def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socket, Tuple[str, int]]:
     raw_data: bytes = b''

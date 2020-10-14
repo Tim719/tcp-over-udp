@@ -8,7 +8,7 @@ from helpers import *
 from typing import Tuple, List
 from threading import Thread, Lock
 from datetime import datetime
-
+import time
 
 def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     raw_data: bytes = b''
@@ -16,6 +16,10 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     seq_number: int = 1
 
     end_of_file: bool = False
+
+    begin_time: int = 0
+
+    last_rtt: float = ESTIMATE_RTT
 
     raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
     filename = raw_data.decode('utf-8').strip('\0')
@@ -35,17 +39,27 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
                 break
             
             n_retries: int = 1
+            formatted_seq_number = "%06d" % seq_number
+            raw_data = formatted_seq_number.encode('ascii') + raw_data
 
             while n_retries <= MAX_RETRIES:
-                formatted_seq_number = "%06d" % seq_number
                 LOGGER.debug("Sending sequence #%s (try %d/%d)" % (formatted_seq_number, n_retries, MAX_RETRIES))
 
-                raw_data = formatted_seq_number.encode('ascii') + raw_data
+                begin_time = time.time_ns()
                 server_sock.sendto(raw_data, client_address)
 
-                ready = select.select([server_sock], [], [], ACK_TIMEOUT)
+                est_srtt: float = srtt(seq_number)
+
+                max_wait: float = est_srtt * SRTT_MARGIN
+
+                # LOGGER.info("max wait: %f s" % max_wait)
+
+                ready = select.select([server_sock], [], [], max_wait)
                 if ready[0]:
                     raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
+
+                    last_rtt = (time.time_ns() - begin_time) / (10**9)
+                    RTT.append(last_rtt)
 
                     try:
                         received_ack_number = int(raw_data.decode('ascii').strip('\0')[3:])
@@ -63,7 +77,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
             
             if n_retries > MAX_RETRIES:
                 LOGGER.warning("ERROR sending sequence #%d (%d retries)" % (seq_number, n_retries - 1))
-                break
+                continue
             
             seq_number += 1
 
@@ -73,8 +87,6 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     raw_data = b"FIN"
     server_sock.sendto(raw_data, client_address)
     server_sock.close()
-
-            
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Receiver a file using a connected transport protocol over UDP")
