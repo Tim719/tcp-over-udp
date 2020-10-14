@@ -15,6 +15,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     raw_data: bytes = b''
     filename: str = ""
     seq_number: int = 1
+    acks_received: set = set()
 
     end_of_file: bool = False
 
@@ -32,10 +33,6 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
 
     with open(filename, 'rb') as fd:
         while True:
-            raw_data = fd.read(BUFFER_SIZE - 7)
-
-            if not raw_data:
-                break
 
             ready = select.select([server_sock], [], [], 0.0)
             if ready[0]:
@@ -49,8 +46,11 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
 
                 oldest_seq_number, sent_data = sent_seq[0]
 
-                if received_ack_number < oldest_seq_number:
-                    raise ValueError("Impossible d'acquitter un segment déjà acquitté")
+                if received_ack_number in acks_received :
+                    # TODO: handle duplicate acks
+                    LOGGER.debug("Duplicate ACK for sequence %d" % received_ack_number)
+                
+                acks_received.add(received_ack_number)
                 
                 while True:
                     sent_seq_number, sent_data = sent_seq.popleft() 
@@ -60,11 +60,16 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
                         break
 
             if len(sent_seq) < WINDOW_SIZE:
-                sent_seq.append((seq_number, raw_data)) # On  ajoute le paquet au tableau
+                raw_data = fd.read(BUFFER_SIZE - 6)
+
+                if not raw_data :
+                    break
 
                 formatted_seq_number = "%06d" % seq_number
                 LOGGER.debug("Sending sequence #%s" % formatted_seq_number)
                 raw_data = formatted_seq_number.encode('ascii') + raw_data
+
+                sent_seq.append((seq_number, raw_data)) # On  ajoute le paquet au tableau
 
                 server_sock.sendto(raw_data, client_address)
                 seq_number += 1
