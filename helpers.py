@@ -2,30 +2,26 @@ from socket import htons, ntohs, socket, AF_INET, SOCK_DGRAM, IPPROTO_UDP
 from typing import Tuple, List
 import logging
 
-BUFFER_SIZE = 2 ** 10
+BUFFER_SIZE = 2 ** 10 - 6
 MAX_SEQ_NUMBER = 999999
 FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
-
-AVG_RTT: float = 0.010
-MAX_RETRIES: int = 32
 
 logging.basicConfig(format=FORMAT)
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.DEBUG)
 
-ESTIMATE_RTT: float = 1
-CONVERGENCE_FACTOR: float = 0.8
-RTT: List[float] = [ESTIMATE_RTT]
+ESTIMATE_RTT: float = 0.01
+CONVERGENCE_FACTOR: float = 0.2
 
-SRTT_MARGIN: float = 1.5
+def srtt(seq_number, srtt_list, rtt_list):
+    global CONVERGENCE_FACTOR
 
-def srtt(seq_number):
-    global ESTIMATE_RTT
-
-    if seq_number == 0:
-        return ESTIMATE_RTT
+    if seq_number < len(srtt_list):
+        return srtt_list[seq_number]
     else:
-        return CONVERGENCE_FACTOR * srtt(seq_number - 1) + (1 - CONVERGENCE_FACTOR) * RTT[seq_number - 1]
+        calc_srtt: float = CONVERGENCE_FACTOR * srtt(seq_number - 1, srtt_list, rtt_list) + (1 - CONVERGENCE_FACTOR) * rtt_list[seq_number - 1]
+        srtt_list.append(calc_srtt)
+        return calc_srtt
 
 def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socket, Tuple[str, int]]:
     raw_data: bytes = b''
@@ -38,6 +34,13 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
         return
 
     LOGGER.debug("SYN received")
+
+    data_sock: socket = socket(family=AF_INET, type=SOCK_DGRAM, proto=IPPROTO_UDP)
+
+    address = (server_ip, data_port)
+
+    data_sock.bind(address)
+    data_sock.setblocking(True)
 
     syn_ack: bytes = f"SYN-ACK{data_port}\0".encode('ascii')
 
@@ -56,12 +59,16 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
         raise ConnectionError("ACK received from another client")
 
     LOGGER.debug("ACK received")
+
+    try:
+        raw_data, _ = data_sock.recvfrom(BUFFER_SIZE)
+    except BlockingIOError as e:
+        LOGGER.critical("Blocking IO error. Please retry.", e)
+        data_sock.sendto( b"FIN", client_address)
+        data_sock.close()
+        return None, None, None
     
-    data_sock: socket = socket(family=AF_INET, type=SOCK_DGRAM, proto=IPPROTO_UDP)
+    filename = raw_data.decode('utf-8').strip('\0')
+    LOGGER.info("Client (%s:%d) is asking for file %s" % (client_address[0], client_address[1], filename))
 
-    address = (server_ip, data_port)
-
-    data_sock.bind(address)
-    data_sock.setblocking(False)
-
-    return data_sock, client_address
+    return data_sock, client_address, filename
