@@ -4,6 +4,7 @@ import os
 import argparse
 import socket
 import select
+import time
 from helpers import *
 from typing import Tuple, List
 from threading import Thread, Lock
@@ -15,12 +16,11 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     raw_data: bytes = b''
     filename: str = ""
     seq_number: int = 1
-    acks_received: set = set()
-
     end_of_file: bool = False
 
     sent_seq = collections.deque(maxlen=WINDOW_SIZE)
 
+    # FIXME: handle BlockingIOError
     raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
     filename = raw_data.decode('utf-8').strip('\0')
     LOGGER.info("Client (%s:%d) is asking for file %s" % (client_address[0], client_address[1], filename))
@@ -30,6 +30,9 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
         raw_data = b"FIN"
         server_sock.sendto(raw_data, client_address)
         return
+
+    file_size = os.path.getsize(filename)
+    start = time.time()
 
     with open(filename, 'rb') as fd:
         while True:
@@ -46,12 +49,15 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
 
                 oldest_seq_number, sent_data = sent_seq[0]
 
-                if received_ack_number in acks_received :
-                    # TODO: handle duplicate acks
+                if received_ack_number + 1 < oldest_seq_number :
+                    continue
+                if received_ack_number + 1 == oldest_seq_number:
                     LOGGER.debug("Duplicate ACK for sequence %d" % received_ack_number)
-                
-                acks_received.add(received_ack_number)
-                
+                    for seq in sent_seq:
+                        number, data = seq
+                        LOGGER.debug("Resending sequence #%d" % number)
+                        server_sock.sendto(data, client_address)
+
                 while True:
                     sent_seq_number, sent_data = sent_seq.popleft() 
                     # Normalement on ne devrait pas être dans le cas où on pop un tableau vide
@@ -59,11 +65,14 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
                     if received_ack_number <= sent_seq_number:
                         break
 
+            # TODO: read next data befora having empty space but append and send it only when space is free
             if len(sent_seq) < WINDOW_SIZE:
                 raw_data = fd.read(BUFFER_SIZE - 6)
 
                 if not raw_data :
-                    break
+                    if len(sent_seq) == 0 :
+                        break
+                    continue
 
                 formatted_seq_number = "%06d" % seq_number
                 LOGGER.debug("Sending sequence #%s" % formatted_seq_number)
@@ -79,6 +88,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     raw_data = b"FIN"
     server_sock.sendto(raw_data, client_address)
     server_sock.close()
+    LOGGER.info("Bit rate : %d Bytes per seconds" % (file_size / ( time.time() - start )) )
 
             
 
