@@ -17,6 +17,9 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     seq_number: int = 1
     end_of_file: bool = False
 
+    rtt_list: List[float] = [ESTIMATE_RTT]
+    srtt_list: List[float] = [ESTIMATE_RTT]
+
     sent_seq = collections.deque(maxlen=WINDOW_SIZE)
 
     if not os.path.isfile(filename):
@@ -28,10 +31,11 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     file_size = os.path.getsize(filename)
     start = time.time()
 
+    begin_time: int = time.time_ns()
+
     with open(filename, 'rb') as fd:
         while True:
-
-            ready = select.select([server_sock], [], [], 0.0)
+            ready = select.select([server_sock], [], [], srtt_list[-1])
             if ready[0]:
                 raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
 
@@ -44,6 +48,9 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                 oldest_seq_number, sent_data = sent_seq[0]
 
                 if received_ack_number + 1 < oldest_seq_number :
+                    last_rtt = (time.time_ns() - begin_time) / (10**9)
+                    rtt_list.append(last_rtt)
+                    srtt_push(srtt_list, rtt_list)
                     continue
                 if received_ack_number + 1 == oldest_seq_number:
                     LOGGER.debug("Duplicate ACK for sequence %d" % received_ack_number)
@@ -74,6 +81,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
 
                 sent_seq.append((seq_number, raw_data)) # On  ajoute le paquet au tableau
 
+                begin_time = time.time_ns()
                 server_sock.sendto(raw_data, client_address)
                 seq_number += 1
     
@@ -83,8 +91,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     server_sock.sendto(raw_data, client_address)
     server_sock.close()
     LOGGER.info("Data rate : %d KB/s" % ((file_size / ( time.time() - start )) / 1000) )
-
-            
+    LOGGER.info("Avg SRTT: %f s, Avg. RTT: %f s" % (sum(srtt_list)/len(srtt_list), sum(rtt_list)/len(rtt_list)))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Receiver a file using a connected transport protocol over UDP")

@@ -5,7 +5,17 @@ import logging
 BUFFER_SIZE = 2 ** 10
 MAX_SEQ_NUMBER = 999999
 FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
-WINDOW_SIZE = 16
+WINDOW_SIZE = 20
+
+ESTIMATE_RTT: float = 0.01
+CONVERGENCE_FACTOR: float = 0.3
+
+def srtt_push(srtt_list, rtt_list):
+    global CONVERGENCE_FACTOR
+
+    calc_srtt: float = CONVERGENCE_FACTOR * srtt_list[-1] + (1 - CONVERGENCE_FACTOR) * rtt_list[-1]
+    srtt_list.append(calc_srtt)
+
 
 logging.basicConfig(format=FORMAT)
 LOGGER = logging.getLogger()
