@@ -12,18 +12,12 @@ from datetime import datetime
 import collections
 
 
-def handle_client(server_sock: socket, client_address: Tuple[str, int]):
+def handle_client(server_sock: socket, client_address: Tuple[str, int], filename: str):
     raw_data: bytes = b''
-    filename: str = ""
     seq_number: int = 1
     end_of_file: bool = False
 
     sent_seq = collections.deque(maxlen=WINDOW_SIZE)
-
-    # FIXME: handle BlockingIOError
-    raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
-    filename = raw_data.decode('utf-8').strip('\0')
-    LOGGER.info("Client (%s:%d) is asking for file %s" % (client_address[0], client_address[1], filename))
 
     if not os.path.isfile(filename):
         LOGGER.warning("%s file does not exist." % filename)
@@ -88,7 +82,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int]):
     raw_data = b"FIN"
     server_sock.sendto(raw_data, client_address)
     server_sock.close()
-    LOGGER.info("Bit rate : %d Bytes per seconds" % (file_size / ( time.time() - start )) )
+    LOGGER.info("Data rate : %d KB/s" % ((file_size / ( time.time() - start )) / 1000) )
 
             
 
@@ -113,12 +107,12 @@ if __name__ == "__main__":
     client_threads: list = []
 
     while True:
-        data_socket, client_address = accept(server_sock, args.interface, data_port)
+        data_socket, client_address, filename = accept(server_sock, args.interface, data_port)
         LOGGER.info("New client connected")
 
         data_port += 1
 
-        client_thread = Thread(target=handle_client, args=(data_socket, client_address))
+        client_thread = Thread(target=handle_client, args=(data_socket, client_address, filename))
         LOGGER.debug("Starting client thread")
         client_thread.start()
 

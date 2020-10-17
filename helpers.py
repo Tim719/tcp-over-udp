@@ -11,7 +11,7 @@ logging.basicConfig(format=FORMAT)
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.DEBUG)
 
-def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socket, Tuple[str, int]]:
+def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socket, Tuple[str, int], str]:
     raw_data: bytes = b''
     nbytes: int = 0
 
@@ -22,6 +22,13 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
         return
 
     LOGGER.debug("SYN received")
+
+    data_sock: socket = socket(family=AF_INET, type=SOCK_DGRAM, proto=IPPROTO_UDP)
+
+    address = (server_ip, data_port)
+
+    data_sock.bind(address)
+    data_sock.setblocking(True)
 
     syn_ack: bytes = f"SYN-ACK{data_port}\0".encode('ascii')
 
@@ -40,12 +47,16 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
         raise ConnectionError("ACK received from another client")
 
     LOGGER.debug("ACK received")
+
+    try:
+        raw_data, _ = data_sock.recvfrom(BUFFER_SIZE)
+    except BlockingIOError as e:
+        LOGGER.critical("Blocking IO error. Please retry.", e)
+        data_sock.sendto( b"FIN", client_address)
+        data_sock.close()
+        return None, None, None
     
-    data_sock: socket = socket(family=AF_INET, type=SOCK_DGRAM, proto=IPPROTO_UDP)
+    filename = raw_data.decode('utf-8').strip('\0')
+    LOGGER.info("Client (%s:%d) is asking for file %s" % (client_address[0], client_address[1], filename))
 
-    address = (server_ip, data_port)
-
-    data_sock.bind(address)
-    data_sock.setblocking(False)
-
-    return data_sock, client_address
+    return data_sock, client_address, filename
