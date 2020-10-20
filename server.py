@@ -30,6 +30,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
 
     file_size = os.path.getsize(filename)
     start = time.time()
+    time_resent = time.time()
 
     begin_time: int = time.time_ns()
 
@@ -60,10 +61,12 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                 if received_ack_number + 1 == oldest_seq_number:
                     # LOGGER.debug("Duplicate ACK for sequence %d %f" % (received_ack_number, time.time() - time_resent))
                     LOGGER.debug("Duplicate ACK for sequence %d" % received_ack_number)
-                    number, data = sent_seq[0]
-                    LOGGER.debug("Resending sequence (duplicate ACK) #%d" % number)
-                    begin_time = time.time_ns()
-                    server_sock.sendto(data, client_address)
+                    if time.time() - time_resent > srtt_list[-1]:
+                        number, data = sent_seq[0]
+                        LOGGER.debug("Resending sequence (duplicate ACK) #%d" % number)
+                        begin_time = time.time_ns()
+                        server_sock.sendto(data, client_address)
+                        time_resent = time.time()
                     continue
                 else:
                     number, data = sent_seq[0]
@@ -76,6 +79,10 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
 
                     if received_ack_number <= sent_seq_number:
                         break
+                
+                time_resent = 0.0
+                # Si on passe ici c'est que le paquet a bien été transmis et acquitté.
+                # Donc on remet le timeout à 0
 
             # TODO: read next data befora having empty space but append and send it only when space is free
             if len(sent_seq) < WINDOW_SIZE:
