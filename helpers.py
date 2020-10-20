@@ -6,7 +6,11 @@ BUFFER_SIZE = 2 ** 10
 MAX_SEQ_NUMBER = 999999
 FORMAT = '%(asctime)-15s %(levelname)-10s %(message)s'
 WINDOW_SIZE = 16
-MAX_DUPLICATE_ACK = 5
+MAX_DUPLICATE_ACK = 2
+TIMER = 0.015
+ONE_SHOT = False
+ESTIMATE_RTT = 0.015
+ALPHA = 0.5
 
 logging.basicConfig(format=FORMAT)
 LOGGER = logging.getLogger()

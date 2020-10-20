@@ -13,11 +13,11 @@ import collections
 
 
 def handle_client(server_sock: socket, client_address: Tuple[str, int], filename: str):
+    global WINDOW_SIZE, MAX_DUPLICATE_ACK, TIMER
     raw_data: bytes = b''
     seq_number: int = 1
     end_of_file: bool = False
     duplicate_ack_count: int = 0
-    TIMER = 0.015
     all_file_sent: bool = False
 
     sent_seq = collections.deque(maxlen=WINDOW_SIZE)
@@ -118,12 +118,30 @@ if __name__ == "__main__":
     parser.add_argument('port', nargs="?", help="Port used for control connection", type=int, default=1234)
     parser.add_argument('-d', '--data', required=False, help="Port used for data connection (will be incremented for each new client)", type=int, default=5500)
     parser.add_argument('-v', '--verbose', required=False, help="Give more infos by increasing verbosity", type=bool, default=False, const=True, nargs='?')
+    
+    parser.add_argument('--window-size', required=False, type=int, default=WINDOW_SIZE)
+    parser.add_argument('--max-duplicate-ack', required=False, type=int, default=MAX_DUPLICATE_ACK)
+    parser.add_argument('--timer', required=False, type=float, default=TIMER)
+    parser.add_argument('--estimate-rtt', required=False, type=float, default=ESTIMATE_RTT)
+    parser.add_argument('--alpha', required=False, type=float, default=ALPHA)
+    parser.add_argument('--one-shot', required=False, default=False, type=bool)
 
     args = parser.parse_args()
 
     LOGGER.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
+    WINDOW_SIZE = args.window_size
+    MAX_DUPLICATE_ACK = args.max_duplicate_ack
+    TIMER = args.timer
+    ONE_SHOT = args.one_shot
+    ESTIMATE_RTT = args.estimate_rtt
+    ALPHA = args.alpha
+
     LOGGER.info("Server started on %s:%d (data port: %d)" % (args.interface, args.port, args.data))
+    LOGGER.info("Window size: %d, max duplicate ack: %d, timer: %f" % (WINDOW_SIZE, MAX_DUPLICATE_ACK, TIMER))
+    LOGGER.info("Estimate RTT : %f, alpha: %f" % (ESTIMATE_RTT, ALPHA))
+    if ONE_SHOT:
+        LOGGER.warning("One-shot mode")
 
     server_sock: socket = socket(family=AF_INET, type=SOCK_DGRAM, proto=IPPROTO_UDP)
     server_address = (args.interface, args.port)
@@ -134,7 +152,6 @@ if __name__ == "__main__":
 
     while True:
         data_socket, client_address, filename = accept(server_sock, args.interface, data_port)
-        LOGGER.info("New client connected")
 
         data_port += 1
 
@@ -143,6 +160,9 @@ if __name__ == "__main__":
         client_thread.start()
 
         client_threads.append(client_thread)
+
+        if ONE_SHOT:
+            break
     
     LOGGER.debug("Joining client threads")
     for th in client_threads:
