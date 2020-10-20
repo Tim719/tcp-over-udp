@@ -16,7 +16,6 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     raw_data: bytes = b''
     seq_number: int = 1
     end_of_file: bool = False
-    TIMER = 0.0180
 
     rtt_list: List[float] = [ESTIMATE_RTT]
     srtt_list: List[float] = [ESTIMATE_RTT]
@@ -31,13 +30,12 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
 
     file_size = os.path.getsize(filename)
     start = time.time()
-    time_armed = time.time()
-    time_resent = time.time()
 
     begin_time: int = time.time_ns()
 
     with open(filename, 'rb') as fd:
         while True:
+
             ready = select.select([server_sock], [], [], srtt_list[-1])
             if ready[0]:
                 raw_data, net_client_address = server_sock.recvfrom(BUFFER_SIZE)
@@ -61,32 +59,23 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                     continue
                 if received_ack_number + 1 == oldest_seq_number:
                     # LOGGER.debug("Duplicate ACK for sequence %d %f" % (received_ack_number, time.time() - time_resent))
-                    if  time.time() - time_resent > TIMER:  #avoid resending too many times while we can't see effect of the resending
-                        LOGGER.debug("Duplicate ACK for sequence %d" % received_ack_number)
-                        for seq in sent_seq:
-                            number, data = seq
-                            LOGGER.debug("Resending sequence #%d" % number)
-                            server_sock.sendto(data, client_address)
-                        time_armed = time.time()
-                        time_resent = time.time()
+                    LOGGER.debug("Duplicate ACK for sequence %d" % received_ack_number)
+                    number, data = sent_seq[0]
+                    LOGGER.debug("Resending sequence (duplicate ACK) #%d" % number)
+                    begin_time = time.time_ns()
+                    server_sock.sendto(data, client_address)
                     continue
-
+                else:
+                    number, data = sent_seq[0]
+                    LOGGER.debug("Resending sequence (timeout) #%d" % number)
+                    begin_time = time.time_ns()
+                    server_sock.sendto(data, client_address)
                 while True:
                     sent_seq_number, sent_data = sent_seq.popleft() 
                     # Normalement on ne devrait pas être dans le cas où on pop un tableau vide
 
                     if received_ack_number <= sent_seq_number:
                         break
-                time_armed = time.time()
-                time_resent = 0.0
-
-            if time.time() - time_armed > TIMER :
-                LOGGER.debug("Timeout for sequence %d" % sent_seq[0][0])
-                for seq in sent_seq:
-                    number, data = seq
-                    LOGGER.debug("Resending sequence #%d" % number)
-                    server_sock.sendto(data, client_address)
-                time_armed = time.time()
 
             # TODO: read next data befora having empty space but append and send it only when space is free
             if len(sent_seq) < WINDOW_SIZE:
