@@ -17,7 +17,8 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     seq_number: int = 1
     end_of_file: bool = False
     duplicate_ack_count: int = 0
-    TIMER = 0.0180
+    TIMER = 0.015
+    all_file_sent: bool = False
 
     sent_seq = collections.deque(maxlen=WINDOW_SIZE)
 
@@ -33,7 +34,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     time_resent = time.time()
 
     with open(filename, 'rb') as fd:
-        while True:
+        while not (all_file_sent and len(sent_seq) == 0):
 
             ready = select.select([server_sock], [], [], 0.0)
             if ready[0]:
@@ -78,7 +79,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                 time_armed = time.time()
                 time_resent = 0.0
 
-            if time.time() - time_armed > TIMER :
+            if len(sent_seq) > 0 and time.time() - time_armed > TIMER :
                 LOGGER.debug("Timeout for sequence %d" % sent_seq[0][0])
                 for seq in sent_seq:
                     number, data = seq
@@ -87,13 +88,12 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                 time_armed = time.time()
 
             # TODO: read next data befora having empty space but append and send it only when space is free
-            if len(sent_seq) < WINDOW_SIZE:
+            while (not all_file_sent) and len(sent_seq) < WINDOW_SIZE:
                 raw_data = fd.read(BUFFER_SIZE - 6)
 
                 if not raw_data :
-                    if len(sent_seq) == 0 :
-                        break
-                    continue
+                    all_file_sent = True
+                    break
 
                 formatted_seq_number = "%06d" % seq_number
                 LOGGER.debug("Sending sequence #%s" % formatted_seq_number)
