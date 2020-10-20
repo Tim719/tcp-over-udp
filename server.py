@@ -16,6 +16,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     raw_data: bytes = b''
     seq_number: int = 1
     end_of_file: bool = False
+    duplicate_ack_count: int = 0
     TIMER = 0.0180
 
     sent_seq = collections.deque(maxlen=WINDOW_SIZE)
@@ -55,13 +56,16 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                 if received_ack_number + 1 == oldest_seq_number:
                     # LOGGER.debug("Duplicate ACK for sequence %d %f" % (received_ack_number, time.time() - time_resent))
                     if  time.time() - time_resent > TIMER:  #avoid resending too many times while we can't see effect of the resending
-                        LOGGER.debug("Duplicate ACK for sequence %d" % received_ack_number)
-                        for seq in sent_seq:
-                            number, data = seq
-                            LOGGER.debug("Resending sequence #%d" % number)
-                            server_sock.sendto(data, client_address)
-                        time_armed = time.time()
-                        time_resent = time.time()
+                        duplicate_ack_count += 1
+
+                        if duplicate_ack_count > MAX_DUPLICATE_ACK:
+                            for seq in sent_seq:
+                                number, data = seq
+                                LOGGER.debug("Resending sequence (duplicate) #%d" % number)
+                                server_sock.sendto(data, client_address)
+                            time_armed = time.time()
+                            time_resent = time.time()
+                            duplicate_ack_count = 0
                     continue
 
                 while True:
@@ -70,6 +74,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
 
                     if received_ack_number <= sent_seq_number:
                         break
+                duplicate_ack_count = 0
                 time_armed = time.time()
                 time_resent = 0.0
 
@@ -77,7 +82,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                 LOGGER.debug("Timeout for sequence %d" % sent_seq[0][0])
                 for seq in sent_seq:
                     number, data = seq
-                    LOGGER.debug("Resending sequence #%d" % number)
+                    LOGGER.debug("Resending sequence (timeout) #%d" % number)
                     server_sock.sendto(data, client_address)
                 time_armed = time.time()
 
@@ -104,9 +109,8 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     raw_data = b"FIN"
     server_sock.sendto(raw_data, client_address)
     server_sock.close()
-    LOGGER.info("Data rate : %d KB/s" % ((file_size / ( time.time() - start )) / 1000) )
-
-            
+    LOGGER.info("Elapsed time: %f s" % (time.time() - start))
+    LOGGER.info("Data rate : %d KB/s" % ((file_size / ( time.time() - start )) / 1000) )  
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Receiver a file using a connected transport protocol over UDP")
