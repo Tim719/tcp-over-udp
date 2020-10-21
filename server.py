@@ -63,10 +63,11 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                         duplicate_ack_count += 1
 
                         if duplicate_ack_count > MAX_DUPLICATE_ACK:
-                            for seq in sent_seq:
+                            for i, seq in enumerate(sent_seq):
                                 number, data, _ = seq
                                 LOGGER.debug("Resending sequence (duplicate) #%d" % number)
                                 server_sock.sendto(data, client_address)
+                                sent_seq[i] = (number, data, time.time())
                             time_armed = time.time()
                             time_resent = time.time()
                             duplicate_ack_count = 0
@@ -76,12 +77,13 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                     sent_seq_number, sent_data, time_sent = sent_seq.popleft() 
                     # Normalement on ne devrait pas être dans le cas où on pop un tableau vide
 
-                    # On calcule le RTT de la trame qu'on acquitte
-                    sequence_rtt = time.time() - time_sent
-                    push_srtt(srtt_list, sequence_rtt)
-                    LOGGER.debug("Calc RTT  for seq %d: %f" % (sent_seq_number, sequence_rtt))
-
                     if received_ack_number <= sent_seq_number:
+                        if received_ack_number == sent_seq_number:
+                            # On calcule le RTT de la trame qu'on acquitte
+                            sequence_rtt = time.time() - time_sent
+                            push_srtt(srtt_list, sequence_rtt)
+                            LOGGER.debug("Calc RTT  for seq %d: %f" % (sent_seq_number, sequence_rtt))
+
                         break
                 duplicate_ack_count = 0
                 time_armed = time.time()
@@ -89,10 +91,11 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
 
             if len(sent_seq) > 0 and time.time() - time_armed > srtt_list[-1] :
                 LOGGER.debug("Timeout for sequence %d" % sent_seq[0][0])
-                for seq in sent_seq:
+                for i, seq in enumerate(sent_seq):
                     number, data, _ = seq
                     LOGGER.debug("Resending sequence (timeout) #%d" % number)
                     server_sock.sendto(data, client_address)
+                    sent_seq[i] = (number, data, time.time())
                 time_armed = time.time()
 
             # TODO: read next data befora having empty space but append and send it only when space is free
