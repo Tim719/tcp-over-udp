@@ -12,13 +12,15 @@ from datetime import datetime
 import collections
 
 
-def handle_client(server_sock: socket, client_address: Tuple[str, int], filename: str):
+def handle_client(server_sock: socket, client_address: Tuple[str, int], filename: str, estimate_rtt=ESTIMATE_RTT):
     global WINDOW_SIZE, MAX_DUPLICATE_ACK, TIMER
     raw_data: bytes = b''
     seq_number: int = 1
     end_of_file: bool = False
     duplicate_ack_count: int = 0
     all_file_sent: bool = False
+
+    srtt_list: list = [estimate_rtt]
 
     sent_seq = collections.deque(maxlen=WINDOW_SIZE)
 
@@ -32,6 +34,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     start = time.time()
     time_armed = time.time()
     time_resent = time.time()
+    sequence_rtt = 0.0
 
     with open(filename, 'rb') as fd:
         while not (all_file_sent and len(sent_seq) == 0):
@@ -46,7 +49,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                     LOGGER.critical("Malformated ACK number")
                     raise
 
-                oldest_seq_number, sent_data = sent_seq[0]
+                oldest_seq_number, *_ = sent_seq[0]
 
                 # LOGGER.debug("Received ACK %d" % received_ack_number)
                 # list_to_str = ''.join(str(l)+', ' for (l, _) in sent_seq)
@@ -56,12 +59,12 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                     continue
                 if received_ack_number + 1 == oldest_seq_number:
                     # LOGGER.debug("Duplicate ACK for sequence %d %f" % (received_ack_number, time.time() - time_resent))
-                    if  time.time() - time_resent > TIMER:  #avoid resending too many times while we can't see effect of the resending
+                    if  time.time() - time_resent > srtt_list[-1]:  #avoid resending too many times while we can't see effect of the resending
                         duplicate_ack_count += 1
 
                         if duplicate_ack_count > MAX_DUPLICATE_ACK:
                             for seq in sent_seq:
-                                number, data = seq
+                                number, data, _ = seq
                                 LOGGER.debug("Resending sequence (duplicate) #%d" % number)
                                 server_sock.sendto(data, client_address)
                             time_armed = time.time()
@@ -70,8 +73,13 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                     continue
 
                 while True:
-                    sent_seq_number, sent_data = sent_seq.popleft() 
+                    sent_seq_number, sent_data, time_sent = sent_seq.popleft() 
                     # Normalement on ne devrait pas être dans le cas où on pop un tableau vide
+
+                    # On calcule le RTT de la trame qu'on acquitte
+                    sequence_rtt = time.time() - time_sent
+                    push_srtt(srtt_list, sequence_rtt)
+                    LOGGER.debug("Calc RTT  for seq %d: %f" % (sent_seq_number, sequence_rtt))
 
                     if received_ack_number <= sent_seq_number:
                         break
@@ -79,10 +87,10 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                 time_armed = time.time()
                 time_resent = 0.0
 
-            if len(sent_seq) > 0 and time.time() - time_armed > TIMER :
+            if len(sent_seq) > 0 and time.time() - time_armed > srtt_list[-1] :
                 LOGGER.debug("Timeout for sequence %d" % sent_seq[0][0])
                 for seq in sent_seq:
-                    number, data = seq
+                    number, data, _ = seq
                     LOGGER.debug("Resending sequence (timeout) #%d" % number)
                     server_sock.sendto(data, client_address)
                 time_armed = time.time()
@@ -99,7 +107,7 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
                 LOGGER.debug("Sending sequence #%s" % formatted_seq_number)
                 raw_data = formatted_seq_number.encode('ascii') + raw_data
 
-                sent_seq.append((seq_number, raw_data)) # On  ajoute le paquet au tableau
+                sent_seq.append((seq_number, raw_data, time.time())) # On  ajoute le paquet au tableau
 
                 server_sock.sendto(raw_data, client_address)
                 seq_number += 1
@@ -151,11 +159,11 @@ if __name__ == "__main__":
     client_threads: list = []
 
     while True:
-        data_socket, client_address, filename = accept(server_sock, args.interface, data_port)
+        data_socket, client_address, filename, estimate_rtt = accept(server_sock, args.interface, data_port)
 
         data_port += 1
 
-        client_thread = Thread(target=handle_client, args=(data_socket, client_address, filename))
+        client_thread = Thread(target=handle_client, args=(data_socket, client_address, filename, estimate_rtt))
         LOGGER.debug("Starting client thread")
         client_thread.start()
 

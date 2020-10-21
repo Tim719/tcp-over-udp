@@ -1,4 +1,5 @@
 from socket import htons, ntohs, socket, AF_INET, SOCK_DGRAM, IPPROTO_UDP
+import time
 from typing import Tuple
 import logging
 
@@ -10,15 +11,23 @@ MAX_DUPLICATE_ACK = 2
 TIMER = 0.015
 ONE_SHOT = False
 ESTIMATE_RTT = 0.015
-ALPHA = 0.5
+ALPHA = 0.2
 
 logging.basicConfig(format=FORMAT)
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.DEBUG)
 
-def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socket, Tuple[str, int], str]:
+def push_srtt(srtt_list: list, rtt: float):
+    global ESTIMATE_RTT, ALPHA
+
+    new_srtt: float = ALPHA * srtt_list[-1] + (1 - ALPHA) * rtt
+    srtt_list.append(new_srtt)
+
+def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socket, Tuple[str, int], str, float]:
     raw_data: bytes = b''
     nbytes: int = 0
+    time_sent: float = 0.0
+    rtt_estimate: float = 0.0
 
     raw_data, client_address = server_socket.recvfrom(BUFFER_SIZE)
 
@@ -37,6 +46,8 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
 
     syn_ack: bytes = f"SYN-ACK{data_port}\0".encode('ascii')
 
+    time_sent = time.time()
+
     nbytes = server_socket.sendto(syn_ack, client_address)
     if nbytes != len(syn_ack):
         raise ConnectionError("Error sending SYN-ACK")
@@ -51,6 +62,7 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
     if client_address2 != client_address:
         raise ConnectionError("ACK received from another client")
 
+    rtt_estimate = time.time() - time_sent
     LOGGER.debug("ACK received")
 
     try:
@@ -64,4 +76,4 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
     filename = raw_data.decode('utf-8').strip('\0')
     LOGGER.info("Client (%s:%d) is asking for file %s" % (client_address[0], client_address[1], filename))
 
-    return data_sock, client_address, filename
+    return data_sock, client_address, filename, rtt_estimate
