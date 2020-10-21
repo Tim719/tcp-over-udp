@@ -10,7 +10,7 @@ echo "$server_address"
 
 dd if=/dev/urandom of=$filename bs=1k count=$filesize
 
-echo "WINDOW_SIZE;TIMER;MAX_ACK_RETRANSMIT;filesize;time"
+echo "WINDOW_SIZE;TIMER;MAX_ACK_RETRANSMIT;filesize;time" >> $benchmark
 
 for WINDOW_SIZE in '2' '4' '6' '8' '10' '12' '14' '16' '32';
 do
@@ -23,7 +23,7 @@ do
             echo "MAX_ACK_RETRANSMIT: $MAX_ACK_RETRANSMIT"
             echo "FILESIZE: $filesize"
 
-            python3 server.py 3000 --one-shot --timer $TIMER --window-size $WINDOW_SIZE --max-duplicate-ack $MAX_ACK_RETRANSMIT > server.log 2>&1 &
+            python3 server.py 3000 --one-shot 1 --timer $TIMER --window-size $WINDOW_SIZE --max-duplicate-ack $MAX_ACK_RETRANSMIT > server.log 2>&1 &
             time=$((time ./client1 $server_address 3000 $filename 0) 2>&1 >/dev/null | perl -nle 'print $1 if /real\s+\d+m([,\d]+)s/' | tr ',' '.')
 
             echo "time: $time"
