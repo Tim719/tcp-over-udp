@@ -24,7 +24,7 @@ do
             echo "FILESIZE: $filesize"
 
             python3 server.py 3000 --one-shot 1 --timer $TIMER --window-size $WINDOW_SIZE --max-duplicate-ack $MAX_ACK_RETRANSMIT > server.log 2>&1 &
-            time=$((time ./client1 $server_address 3000 $filename 0) 2>&1 >/dev/null | perl -nle 'print $1 if /real\s+\d+m([,\d]+)s/' | tr ',' '.')
+            time=$( (time ./client1 $server_address 3000 $filename 0) 2>&1 | perl -nle 'print $1 if /real\s+\d+m([,\d]+)s/' | tr ',' '.')
 
             echo "time: $time"
 
