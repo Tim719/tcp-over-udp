@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from socket import htons, ntohs, socket, AF_INET, SOCK_DGRAM, IPPROTO_UDP
 from typing import Tuple
 import logging
@@ -65,3 +67,7 @@ def accept(server_socket: socket, server_ip: str, data_port: int) -> Tuple[socke
     LOGGER.info("Client (%s:%d) is asking for file %s" % (client_address[0], client_address[1], filename))
 
     return data_sock, client_address, filename
+
+if __name__ == "__main__":
+    LOGGER.warning("You must execute server.py")
+    exit(-1)
