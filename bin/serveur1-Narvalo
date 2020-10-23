@@ -113,35 +113,22 @@ def handle_client(server_sock: socket, client_address: Tuple[str, int], filename
     LOGGER.info("Data rate : %d KB/s" % ((file_size / ( time.time() - start )) / 1000) )  
 
 if __name__ == "__main__":
+    WINDOW_SIZE = 16
+    MAX_DUPLICATE_ACK = 2
+    TIMER = 0.017
+
     parser = argparse.ArgumentParser(description="Receiver a file using a connected transport protocol over UDP")
     parser.add_argument('-i', '--interface', required=False, help="Listening interface", default="0.0.0.0")
     parser.add_argument('port', nargs="?", help="Port used for control connection", type=int, default=1234)
-    parser.add_argument('-d', '--data', required=False, help="Port used for data connection (will be incremented for each new client)", type=int, default=5500)
+    parser.add_argument('-d', '--data', required=False, help="Port used for data connection (will be incremented for each new client)", type=int, default=9500)
     parser.add_argument('-v', '--verbose', required=False, help="Give more infos by increasing verbosity", type=bool, default=False, const=True, nargs='?')
-    
-    parser.add_argument('--window-size', required=False, type=int, default=WINDOW_SIZE)
-    parser.add_argument('--max-duplicate-ack', required=False, type=int, default=MAX_DUPLICATE_ACK)
-    parser.add_argument('--timer', required=False, type=float, default=TIMER)
-    parser.add_argument('--estimate-rtt', required=False, type=float, default=ESTIMATE_RTT)
-    parser.add_argument('--alpha', required=False, type=float, default=ALPHA)
-    parser.add_argument('--one-shot', required=False, default=False, type=bool)
 
     args = parser.parse_args()
 
     LOGGER.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
-    WINDOW_SIZE = args.window_size
-    MAX_DUPLICATE_ACK = args.max_duplicate_ack
-    TIMER = args.timer
-    ONE_SHOT = args.one_shot
-    ESTIMATE_RTT = args.estimate_rtt
-    ALPHA = args.alpha
-
     LOGGER.info("Server started on %s:%d (data port: %d)" % (args.interface, args.port, args.data))
     LOGGER.info("Window size: %d, max duplicate ack: %d, timer: %f" % (WINDOW_SIZE, MAX_DUPLICATE_ACK, TIMER))
-    LOGGER.info("Estimate RTT : %f, alpha: %f" % (ESTIMATE_RTT, ALPHA))
-    if ONE_SHOT:
-        LOGGER.warning("One-shot mode")
 
     server_sock: socket = socket(family=AF_INET, type=SOCK_DGRAM, proto=IPPROTO_UDP)
     server_address = (args.interface, args.port)
@@ -160,9 +147,6 @@ if __name__ == "__main__":
         client_thread.start()
 
         client_threads.append(client_thread)
-
-        if ONE_SHOT:
-            break
     
     LOGGER.debug("Joining client threads")
     for th in client_threads:
